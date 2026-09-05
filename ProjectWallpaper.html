@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Wallpaper Command Center</title>
+    <!-- Importando o Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0f0f13;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            user-select: none; 
+        }
+
+        i[class^="ph"] {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* #region TopLeft Panel */
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.9);
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            background-color: rgba(26, 26, 32, 0.7);
+            backdrop-filter: blur(12px);
+            padding: 25px 30px;
+            width: 295px;
+            height: 250px;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        
+        #clock {
+            font-size: 5rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            line-height: 1;
+            margin-bottom: 5px;
+        }
+        
+        .info-row {
+            font-size: 1.2rem;
+            color: #c0c0c0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .info-highlight {
+            color: #ffffff;
+            font-weight: 600;
+            font-size: 1.4rem;
+        }
+        
+        .info-details {
+            font-size: 1rem;
+            color: #9a9a9a;
+            margin-top: 2px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        /* #endregion TopLeft Panel */
+
+        /* #region Controles Centrais (Modo Edição e Refresh) */
+        #controls-container {
+            position: absolute;
+            bottom: 60px;
+            right: 325px;
+            display: flex;
+            gap: 15px;
+            z-index: 30;
+        }
+
+        #controls-container button {
+            background: rgba(40, 40, 50, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #a0a0b0;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #controls-container button:hover {
+            background: rgba(60, 60, 75, 0.8);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        /* #endregion */
+
+        /* #region Drop Zones Dinâmicas */
+        .drop-zone {
+            position: absolute;
+            z-index: 20;
+            display: flex;
+            flex-wrap: wrap; 
+            align-content: flex-start;
+            gap: 15px;
+            padding: 15px;
+            /* Invisível por padrão no modo travado */
+            border: 1px dashed transparent; 
+            background: transparent;
+            border-radius: 12px;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        /* Revela as zonas apenas quando a tag body tiver a classe edit-mode */
+        body.edit-mode .drop-zone {
+            border-color: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        body.edit-mode .drop-zone.drag-over {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* Coordenadas e posições */
+        #zone-top-left { top: 20px; left: 320px; width: 550px; height: 105px; }
+        #zone-top-right { top: 390px; right: -30px; width: 865px; height: 105px; transform: rotate(-45deg); flex-direction: row-reverse; }
+        #zone-bot-right { bottom: 170px; right: -30px; width: 920px; height: 295px; transform: rotate(-45deg); flex-direction: row-reverse; }
+        #zone-bot-left { top: 280px; left: 20px; width: 295px; height: 600px; }
+        /* #endregion */
+
+        /* #region Ícones dos Atalhos */
+        .app-icon {
+            width: 75px;
+            height: 75px;
+            background: linear-gradient(145deg, #1a1a20, #22222a);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            color: #a0a0b0;
+            transition: transform 0.1s;
+            position: relative;
+        }
+        
+        /* Muda o cursor do mouse dependendo do modo */
+        body.edit-mode .app-icon { cursor: grab; }
+        body.edit-mode .app-icon:active { cursor: grabbing; transform: scale(0.95); }
+        body:not(.edit-mode) .app-icon { cursor: pointer; }
+
+        .app-icon img {
+            pointer-events: none;
+        }
+
+        /* Tooltip flutuante e escuro */
+        .app-icon::after {
+            content: attr(data-nome);
+            position: absolute;
+            bottom: 110%;
+            left: 50%;
+            transform: translateX(-50%) translateY(10px);
+            background: rgba(15, 15, 19, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.2s ease;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+
+        .app-icon:hover::after {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+        /* #endregion */
+
+        /* #region Visualizer */
+        #visualizer-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 200vw;
+            height: 200vh;
+            /* Rotação centralizada perfeitamente */
+            transform: translate(-41%, -41%) rotate(-45deg); 
+            z-index: 1;
+            pointer-events: none;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        /* #endregion Visualizer */
+
+    </style>
+</head>
+<body>
+
+    <!-- #region TopLeft Panel -->
+    <div id="info-panel">
+        <div id="clock">00:00</div>
+        
+        <div class="info-row">
+            <span id="temp-main" class="info-highlight">--°C</span>
+            <span id="weather-desc">Carregando clima...</span>
+        </div>
+        
+        <div class="info-details" id="weather-details">
+            <i class="ph ph-drop"></i> --% | <i class="ph ph-wind"></i> -- km/h
+        </div>
+        
+        <div class="info-row" style="margin-top: 8px;">
+            <span id="moon-phase"><i class="ph ph-circle"></i> Calculando lua...</span>
+        </div>
+    </div>
+    <!-- #endregion TopLeft Panel -->
+
+    <!-- #region Zonas Desenhadas (Drop Zones) -->
+    <div class="drop-zone" id="zone-top-left"></div>
+    <div class="drop-zone" id="zone-top-right"></div>
+    <div class="drop-zone" id="zone-bot-right"></div>
+    <div class="drop-zone" id="zone-bot-left"></div>
+    <!-- #endregion -->
+
+    <!-- #region Controles -->
+    <div id="controls-container">
+        <button id="edit-mode-btn" onclick="toggleEditMode()">
+            <i class="ph ph-lock-key"></i> Travado
+        </button>
+        <button id="refresh-btn" onclick="carregarAtalhos()">
+            <i class="ph ph-arrows-clockwise"></i> Refresh
+        </button>
+    </div>
+    <!-- #endregion -->
+
+    <!-- #region Visualizer -->
+    <div id="visualizer-container">
+        <canvas id="visualizer"></canvas>
+    </div>
+    <!-- #endregion Visualizer -->
+
+    <script>
+        
+        let isEditMode = false;
+
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            const btn = document.getElementById('edit-mode-btn');
+            
+            if (isEditMode) {
+                btn.innerHTML = '<i class="ph ph-pencil-simple"></i> Editando';
+                btn.style.color = '#fff';
+                btn.style.borderColor = 'rgba(255,255,255,0.5)';
+                document.body.classList.add('edit-mode');
+            } else {
+                btn.innerHTML = '<i class="ph ph-lock-key"></i> Travado';
+                btn.style.color = '#a0a0b0';
+                btn.style.borderColor = 'rgba(255,255,255,0.1)';
+                document.body.classList.remove('edit-mode');
+            }
+            carregarAtalhos();
+        }
+
+        function updateClock() {
+            const now = new Date();
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            document.getElementById('clock').innerText = `${h}:${m}`;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        const weatherCodes = {
+            0: '<i class="ph ph-sun"></i> Céu limpo', 1: '<i class="ph ph-cloud-sun"></i> Principalmente limpo',
+            2: '<i class="ph ph-cloud-sun"></i> Parcialmente nublado', 3: '<i class="ph ph-cloud"></i> Nublado',
+            45: '<i class="ph ph-cloud-fog"></i> Neblina', 48: '<i class="ph ph-cloud-fog"></i> Nevoeiro',
+            51: '<i class="ph ph-cloud-rain"></i> Garoa leve', 61: '<i class="ph ph-cloud-rain"></i> Chuva leve',
+            63: '<i class="ph ph-cloud-rain"></i> Chuva', 65: '<i class="ph ph-cloud-rain"></i> Chuva forte',
+            80: '<i class="ph ph-cloud-showers"></i> Pancadas de chuva', 82: '<i class="ph ph-cloud-lightning"></i> Tempestade',
+            95: '<i class="ph ph-cloud-lightning"></i> Trovoada'
+        };
+
+        async function fetchWeather() {
+            try {
+                const url = 'https://api.open-meteo.com/v1/forecast?latitude=-25.4284&longitude=-49.2733&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m';
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                document.getElementById('temp-main').innerText = `${Math.round(data.current.temperature_2m)}°C`;
+                document.getElementById('weather-desc').innerHTML = weatherCodes[data.current.weather_code] || '<i class="ph ph-thermometer"></i> Desconhecido';
+                document.getElementById('weather-details').innerHTML = `<i class="ph ph-drop"></i> ${data.current.relative_humidity_2m}% &nbsp;|&nbsp; <i class="ph ph-wind"></i> ${Math.round(data.current.wind_speed_10m)} km/h`;
+            } catch (error) {
+                document.getElementById('weather-desc').innerHTML = '<i class="ph ph-warning"></i> Falha ao carregar';
+                await new Promise(resolve => (setTimeout(resolve, 5000)));
+                fetchWeather();
+            }
+        }
+        fetchWeather();
+        setInterval(fetchWeather, 1800000);
+
+        function getMoonPhase() {
+            const date = new Date();
+            let year = date.getFullYear(), month = date.getMonth() + 1, day = date.getDate();
+            if (month < 3) { year--; month += 12; }
+            let a = Math.floor(year / 100), b = Math.floor(a / 4), c = 2 - a + b;
+            let jd = c + day + Math.floor(365.25 * (year + 4716)) + Math.floor(30.6001 * (month + 1)) - 1524.5;
+            let age = ((jd - 2451549.5) / 29.53058867 - Math.floor((jd - 2451549.5) / 29.53058867)) * 29.53; 
+
+            if (age < 1.84) return '<i class="ph ph-circle"></i> Lua Nova';
+            if (age < 5.53) return '<i class="ph ph-moon"></i> Crescente Côncava';
+            if (age < 9.22) return '<i class="ph ph-circle-half"></i> Quarto Crescente';
+            if (age < 12.91) return '<i class="ph-fill ph-circle-half"></i> Crescente Convexa';
+            if (age < 16.61) return '<i class="ph-fill ph-circle"></i> Lua Cheia';
+            if (age < 20.30) return '<i class="ph-fill ph-circle-half" style="transform: scaleX(-1);"></i> Minguante Convexa';
+            if (age < 23.99) return '<i class="ph ph-circle-half" style="transform: scaleX(-1);"></i> Quarto Minguante';
+            if (age < 27.68) return '<i class="ph ph-moon" style="transform: scaleX(-1);"></i> Minguante Côncava';
+            return '<i class="ph ph-circle"></i> Lua Nova';
+        }
+        document.getElementById('moon-phase').innerHTML = getMoonPhase();
+        setInterval(() => document.getElementById('moon-phase').innerHTML = getMoonPhase(), 86400000);
+
+
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        try{
+            window.wallpaperRegisterAudioListener(function(audioArray) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                const numBars = 64; 
+                const spacing = 8; 
+                const barWidth = (canvas.width / numBars) - spacing;
+
+                for (let i = 0; i < numBars; i++) {
+                    let amplitude = audioArray[i];
+                    
+                    let SENSIBILIDADE = 1.8; 
+                    let amplitudeTurbinada = amplitude * SENSIBILIDADE;
+                    
+                    if (amplitudeTurbinada > 1.0) amplitudeTurbinada = 1.0;
+
+                    let barHeight = amplitudeTurbinada * (canvas.height * 0.4); 
+                    
+                    let x = i * (barWidth + spacing);
+                    let y = (canvas.height / 2) - (barHeight / 2);
+
+                    ctx.fillStyle = `rgba(${130 + i * 2}, 60, ${255 - i}, 0.85)`;
+                    
+                    ctx.beginPath();
+                    ctx.roundRect(x, y, barWidth, barHeight, 12); 
+                    ctx.fill();
+                }
+            });
+        }
+        catch(e){
+            // Caso o wallpaper não esteja rodando no Wallpaper Engine, apenas desenha barras estáticas
+
+            const numBars = 64; 
+            const spacing = 8; 
+            const barWidth = (canvas.width / numBars) - spacing;
+
+            for (let i = 0; i < numBars; i++) {
+                let amplitude = .01;
+                
+                let SENSIBILIDADE = 1.8; 
+                let amplitudeTurbinada = amplitude * SENSIBILIDADE;
+                
+                if (amplitudeTurbinada > 1.0) amplitudeTurbinada = 1.0;
+
+                let barHeight = amplitudeTurbinada * (canvas.height * 0.4); 
+                
+                let x = i * (barWidth + spacing);
+                let y = (canvas.height / 2) - (barHeight / 2);
+
+                ctx.fillStyle = `rgba(${130 + i * 2}, 60, ${255 - i}, 0.85)`;
+                
+                ctx.beginPath();
+                ctx.roundRect(x, y, barWidth, barHeight, 12); 
+                ctx.fill();
+            }
+        }
+
+        const ZONA_PADRAO = 'zone-bot-left';
+        let iconeArrastado = null;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        function salvarLayout() {
+            let layout = {};
+            document.querySelectorAll('.drop-zone').forEach(zone => {
+                layout[zone.id] = [];
+                zone.querySelectorAll('.app-icon').forEach(icon => {
+                    layout[zone.id].push(icon.id.replace('app-', ''));
+                });
+            });
+            localStorage.setItem('layoutIcones', JSON.stringify(layout));
+        }
+
+        async function carregarAtalhos() {
+            let apps = [
+                { id: "unity", nome: "Unity", icone_url: "invalid.png" },
+                { id: "unreal", nome: "Unreal", icone_url: "invalid.png" },
+                { id: "sql", nome: "SQL", icone_url: "invalid.png" },
+                { id: "vscode", nome: "VS Code", icone_url: "invalid.png" },
+                { id: "github", nome: "GitHub", icone_url: "invalid.png" },
+                { id: "discord", nome: "Discord", icone_url: "invalid.png" }
+            ];
+
+            try {
+                const res = await fetch('http://localhost:60001/atalhos');
+                if (res.ok) apps = await res.json();
+            } catch (e) {}
+
+            renderizarAtalhos(apps);
+        }
+
+        function renderizarAtalhos(apps) {
+            document.querySelectorAll('.drop-zone').forEach(z => z.innerHTML = '');
+            
+            let layoutSalvo = JSON.parse(localStorage.getItem('layoutIcones')) || {};
+            const tagErro = `onerror="this.outerHTML='<i class=\\'ph ph-app-window\\' style=\\'font-size: 36px;\\'></i>'"`;
+
+            let elementosApps = {};
+            
+            apps.forEach(app => {
+                const btn = document.createElement('div');
+                btn.className = 'app-icon';
+                btn.id = `app-${app.id}`;
+                btn.setAttribute('data-nome', app.nome);
+                btn.innerHTML = `<img src="${app.icone_url}" width="40" height="40" style="border-radius: 8px;" ${tagErro}>`;
+
+                if(!isEditMode){
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation(); 
+                        fetch(`http://localhost:60001/executar/${app.id}`, {method: 'POST'});
+                    });
+                }
+                else if(isEditMode){
+                    btn.addEventListener('mousedown', (e) => {
+                        
+                        iconeArrastado = btn;
+                        
+                        iconeArrastado.origParent = btn.parentNode;
+                        iconeArrastado.origNextSibling = btn.nextSibling;
+                        
+                        const rect = btn.getBoundingClientRect();
+                        offsetX = e.clientX - rect.left;
+                        offsetY = e.clientY - rect.top;
+                        
+                        btn.style.position = 'fixed';
+                        btn.style.zIndex = '1000';
+                        btn.style.left = `${e.clientX - offsetX}px`;
+                        btn.style.top = `${e.clientY - offsetY}px`;
+                        btn.style.pointerEvents = 'none';
+                        document.body.appendChild(btn);
+                    });
+                }
+                elementosApps[app.id] = btn;
+            });
+
+            let appsAdicionados = new Set();
+            for (const [zoneId, appIds] of Object.entries(layoutSalvo)) {
+                const zona = document.getElementById(zoneId);
+                if (zona) {
+                    appIds.forEach(id => {
+                        if (elementosApps[id]) {
+                            zona.appendChild(elementosApps[id]);
+                            appsAdicionados.add(id);
+                        }
+                    });
+                }
+            }
+
+            const zonaPadrao = document.getElementById(ZONA_PADRAO);
+            apps.forEach(app => {
+                if (!appsAdicionados.has(app.id)) {
+                    zonaPadrao.appendChild(elementosApps[app.id]);
+                }
+            });
+        }
+
+        document.addEventListener('mousemove', (e) => {
+            if (!iconeArrastado) return;
+            
+            iconeArrastado.style.left = `${e.clientX - offsetX}px`;
+            iconeArrastado.style.top = `${e.clientY - offsetY}px`;
+            
+            document.querySelectorAll('.drop-zone').forEach(zone => {
+                const rect = zone.getBoundingClientRect();
+                if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                    zone.classList.add('drag-over');
+                } else {
+                    zone.classList.remove('drag-over');
+                }
+            });
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (!iconeArrastado) return;
+            
+            iconeArrastado.style.pointerEvents = 'auto';
+            iconeArrastado.style.position = 'static';
+            iconeArrastado.style.zIndex = 'auto';
+            
+            iconeArrastado.style.display = 'none';
+            const elemAbaixo = document.elementFromPoint(e.clientX, e.clientY);
+            iconeArrastado.style.display = 'flex';
+            
+            const iconeDestino = elemAbaixo ? elemAbaixo.closest('.app-icon') : null;
+            const zonaDestino = elemAbaixo ? elemAbaixo.closest('.drop-zone') : null;
+            
+            if (iconeDestino && iconeDestino !== iconeArrastado) {
+                iconeDestino.parentNode.insertBefore(iconeArrastado, iconeDestino);
+            } else if (zonaDestino) {
+                zonaDestino.appendChild(iconeArrastado);
+            } else {
+                if (iconeArrastado.origNextSibling) {
+                    iconeArrastado.origParent.insertBefore(iconeArrastado, iconeArrastado.origNextSibling);
+                } else {
+                    iconeArrastado.origParent.appendChild(iconeArrastado);
+                }
+            }
+            
+            salvarLayout(); 
+            
+            document.querySelectorAll('.drop-zone').forEach(z => z.classList.remove('drag-over'));
+            setTimeout(() => { iconeArrastado = null; }, 50);
+        });
+
+        carregarAtalhos();
+    </script>
+</body>
+</html>
